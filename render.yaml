@@ -1,0 +1,82 @@
+# ============================================================
+#  Baywatch Service OS — Render Blueprint (permanent hosted link).
+#
+#  Deploy entirely from the browser, no CLI:
+#    1. render.com → sign up / log in (GitHub account works)
+#    2. New  →  Blueprint
+#    3. Connect the repo  gtgopinath5/BSMS   →  Apply
+#    4. Render reads this file, builds the Dockerfile, provisions Postgres
+#    5. When it finishes you get a permanent URL:
+#         https://baywatch.onrender.com   (exact name shown in the dashboard)
+#
+#  ONE manual step after the first deploy, because Render cannot interpolate
+#  its own URL into this file: in the service's Environment tab set
+#       CUSTOMER_WATCH_BASE_URL = https://<your-service>.onrender.com
+#       CORS_ORIGINS            = https://<your-service>.onrender.com
+#  and redeploy. Until then the app works, but customer watch/approval links
+#  point at localhost. Everything else needs no edits.
+#
+#  Plan notes (read before choosing):
+#   - `free` web spins down after ~15 min idle; the next visit cold-starts in
+#     roughly a minute. Fine to show someone; sluggish for a live walkthrough.
+#   - `free` Postgres is REMOVED by Render after 30 days. For a link you intend
+#     to keep, move both to `starter` (about $7/month each).
+#   - Persistent disks need a paid plan. Without one, recording/intake media is
+#     ephemeral and is lost on each deploy — the DB is not, and /ready still
+#     passes because the container filesystem is writable.
+# ============================================================
+services:
+  - type: web
+    name: baywatch
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    region: singapore
+    branch: main
+    # /ready (not /health) — it 503s unless the DB is reachable AND the media
+    # root is writable, which is what "can serve traffic" actually means here.
+    healthCheckPath: /ready
+    envVars:
+      # development on purpose: production mode treats SEED_ON_STARTUP as a hard
+      # startup blocker, which would leave the deploy with no accounts to log in
+      # with. Seed once, then harden — see DEPLOYMENT_RUNBOOK.md.
+      - key: APP_ENV
+        value: development
+      - key: SEED_ON_STARTUP
+        value: "true"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: baywatch-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true          # Render generates a strong secret
+      - key: INTEGRATION_SECRET_KEY
+        generateValue: true
+      # No MQTT broker in a hosted demo — the backend timer stays the single
+      # source of truth and /health reports MQTT dormant instead of faking it.
+      - key: MQTT_ENABLED
+        value: "false"
+      - key: BW_MEDIA_ROOT
+        value: /app/media
+      # Set these to your real https origin after the first deploy (see header).
+      - key: CUSTOMER_WATCH_BASE_URL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+
+databases:
+  - name: baywatch-db
+    databaseName: baywatch
+    user: baywatch
+    plan: free
+    region: singapore
+
+# ── Optional: Redis for timers that survive a restart ──────────────
+# Without it the backend falls back to in-memory timers: they work, but a
+# restart (or a free-tier spin-down) loses any running countdown, and the log
+# says so honestly. To add it, create a Key Value instance in the Render
+# dashboard and set REDIS_URL on the web service to its internal URL.
+# It is left out of this Blueprint deliberately — Render has renamed this
+# resource type, so hardcoding the key risks the whole Blueprint failing to
+# parse on your first attempt, which is a worse outcome than no Redis.

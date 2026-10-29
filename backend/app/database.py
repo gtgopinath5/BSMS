@@ -13,7 +13,9 @@ if settings.database_url.startswith("sqlite"):
     # allow use across FastAPI's threadpool
     connect_args = {"check_same_thread": False}
 
-engine = create_engine(settings.database_url, echo=False, future=True, connect_args=connect_args)
+# settings.sqlalchemy_url (not database_url) so a managed provider's
+# `postgres://` / `postgresql://` URL is rewritten to the psycopg v3 driver.
+engine = create_engine(settings.sqlalchemy_url, echo=False, future=True, connect_args=connect_args)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
 
 

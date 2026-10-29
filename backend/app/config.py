@@ -114,6 +114,26 @@ class Settings(BaseSettings):
     def cors_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
+    @property
+    def sqlalchemy_url(self) -> str:
+        """DATABASE_URL normalized to a driver SQLAlchemy can actually load.
+
+        Managed Postgres providers (Render, Railway, Heroku, Neon, Supabase)
+        inject `postgres://…` or `postgresql://…`. Neither works here as-is:
+        `postgres://` is not a registered dialect, and bare `postgresql://`
+        defaults to psycopg2, which is not a dependency (this project pins
+        psycopg v3). Both are rewritten to `postgresql+psycopg://` so the same
+        image boots unchanged against any of those providers.
+
+        A URL that already names its driver, and SQLite, are left untouched.
+        """
+        url = self.database_url.strip()
+        if url.startswith("postgres://"):
+            return "postgresql+psycopg://" + url[len("postgres://"):]
+        if url.startswith("postgresql://"):
+            return "postgresql+psycopg://" + url[len("postgresql://"):]
+        return url
+
 
 @lru_cache
 def get_settings() -> Settings:
