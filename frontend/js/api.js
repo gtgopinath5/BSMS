@@ -9,7 +9,19 @@
 //  states rather than fabricated data.
 // ============================================================
 (function () {
-  const BASE = localStorage.getItem('bw_api_base') || 'http://localhost:8000';
+  // API origin. Resolution order:
+  //  1. an explicit `bw_api_base` override in localStorage (manual/testing)
+  //  2. dev workflow — the page came from frontend/serve.py on :7890 (or file://),
+  //     so the backend is the separate process on :8000
+  //  3. otherwise SAME ORIGIN: the backend is serving this page itself
+  //     (single-container deployment), which also makes CORS irrelevant.
+  const BASE = (() => {
+    const override = localStorage.getItem('bw_api_base');
+    if (override) return override;
+    const loc = window.location;
+    const isDevStatic = loc.protocol === 'file:' || loc.port === '7890';
+    return isDevStatic ? 'http://localhost:8000' : loc.origin;
+  })();
   const TKEY = 'bw_token';
   const UKEY = 'bw_user';
   let _online = null;            // null = unknown, true/false after ping()

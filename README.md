@@ -121,6 +121,44 @@ git-ignored `LOCAL_TEST_CREDENTIALS.md`.
 
 ---
 
+## Deploy it
+
+The app needs **persistent processes** — WebSocket channels, the MQTT publisher,
+the retention scheduler and FFmpeg capture are all long-running. That rules out
+serverless hosts (Vercel/Netlify functions); use a container platform.
+
+**One-command demo stack** (app + PostgreSQL + Redis, single origin):
+
+```bash
+docker compose -f docker-compose.demo.yml up -d --build
+open http://localhost:8090
+```
+
+The app container serves the frontend *and* the API on one origin, so there is
+no CORS to configure and the customer watch/approval pages stay same-origin.
+To expose it publicly, pass the public URL so customer links resolve:
+
+```bash
+PUBLIC_URL=https://your-host docker compose -f docker-compose.demo.yml up -d
+```
+
+**Hosted** — [fly.toml](fly.toml) deploys the same image to Fly.io (persistent
+VM, volume-backed media, `/ready` health gate); the launch steps are in its
+header comment. Render and Railway take the same `Dockerfile` directly.
+
+> The demo stack runs `APP_ENV=development` **on purpose**: production mode
+> treats `SEED_ON_STARTUP=true` as a hard startup blocker, which would leave a
+> fresh deployment with no accounts to log in with. For a real production
+> rollout seed once, then set `APP_ENV=production` with
+> `SEED_ON_STARTUP=false` — see [DEPLOYMENT_RUNBOOK.md](DEPLOYMENT_RUNBOOK.md)
+> and [backend/docker-compose.prod.yml](backend/docker-compose.prod.yml).
+
+Cameras, ESP32 timers and the barricade relay are shop-floor hardware: a cloud
+deployment reports them unavailable via `/health` and the UI stays camera-gated,
+so nothing shows a false green.
+
+---
+
 ## Health & verification
 
 ```bash

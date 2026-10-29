@@ -34,6 +34,7 @@ pymupdf==1.25.1         # fast PDF parsing
 opencv-python-headless==4.10.0.84   # frame capture (needs FFmpeg on host)
 # PDF reports:
 weasyprint==63.1        # HTML->PDF (needs system cairo/pango)
+fpdf2==2.8.7            # vehicle-intake evidence PDF (utils/intake_evidence_pdf.py)
 # Notifications:
 # SMS via MSG91 uses plain HTTP (stdlib urllib) — no SDK required.
 sendgrid==6.11.0

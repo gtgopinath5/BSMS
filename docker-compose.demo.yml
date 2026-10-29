@@ -1,0 +1,72 @@
+# ============================================================
+#  Baywatch Service OS — one-command demo stack.
+#
+#    docker compose -f docker-compose.demo.yml up -d --build
+#    open http://localhost:8090
+#
+#  One app container serves the frontend AND the API on a single origin, with
+#  PostgreSQL and Redis alongside. Seeded demo users are created on first boot.
+#
+#  APP_ENV=development is DELIBERATE: production mode treats SEED_ON_STARTUP
+#  as a hard blocker, which would leave the demo with zero accounts and no way
+#  to log in. For a real production deploy use backend/docker-compose.prod.yml
+#  and follow DEPLOYMENT_RUNBOOK.md.
+# ============================================================
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${HOST_PORT:-8090}:8000"
+    environment:
+      APP_ENV: development
+      DATABASE_URL: postgresql+psycopg://baywatch:baywatch@postgres:5432/baywatch
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      JWT_SECRET: ${JWT_SECRET:-demo-only-secret-rotate-before-any-real-use-0000}
+      SEED_ON_STARTUP: "true"
+      # No broker in the demo — the backend timer stays the source of truth and
+      # /health reports MQTT as dormant rather than pretending it is connected.
+      MQTT_ENABLED: "false"
+      # Public origin for the customer watch/approval links. Override when the
+      # stack is exposed through a tunnel or a real domain:
+      #   PUBLIC_URL=https://xxxx.ngrok-free.app docker compose -f ... up -d
+      CUSTOMER_WATCH_BASE_URL: ${PUBLIC_URL:-http://localhost:8090}
+      CORS_ORIGINS: ${PUBLIC_URL:-http://localhost:8090}
+      BW_MEDIA_ROOT: /app/media
+    volumes:
+      - media:/app/media
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: baywatch
+      POSTGRES_PASSWORD: baywatch
+      POSTGRES_DB: baywatch
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U baywatch -d baywatch"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:
+  media:

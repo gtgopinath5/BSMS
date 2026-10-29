@@ -12,9 +12,12 @@ if not _bw_log.handlers:
     _bw_log.addHandler(_h)
     _bw_log.propagate = False
 
+from pathlib import Path
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -304,6 +307,28 @@ def ready():
     return JSONResponse(status_code=200 if ready_ok else 503, content=body)
 
 
+# ── Single-service deployment (optional) ───────────────────────────
+# When the frontend build is present next to the backend (the repo layout, and
+# how the Docker image is assembled), this process serves the app AND the API on
+# ONE origin. That removes CORS from the deployment entirely and keeps the
+# customer watch/approval pages same-origin, exactly as they are in dev.
+# When it is absent (plain API container), every route below behaves as before
+# and `/` returns the API banner. Nothing here affects the dev workflow, where
+# the frontend is served separately by frontend/serve.py on :7890.
+_FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
+_INDEX = _FRONTEND_DIR / "index.html"
+
+
 @app.get("/", tags=["system"])
 def root():
+    if _INDEX.exists():
+        return FileResponse(str(_INDEX), media_type="text/html",
+                            headers={"Cache-Control": "no-store"})
     return {"success": True, "message": "Baywatch Service OS API", "data": {"docs": "/docs"}}
+
+
+# Mounted LAST so every API route, /ws, /hls and the public customer planes
+# registered above keep priority; this only catches what they did not match.
+if _FRONTEND_DIR.is_dir():
+    app.mount("/", StaticFiles(directory=str(_FRONTEND_DIR), html=True), name="frontend")
+    _main_log.info("serving frontend from %s (single-origin deployment)", _FRONTEND_DIR)

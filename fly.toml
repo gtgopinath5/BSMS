@@ -1,0 +1,64 @@
+# ============================================================
+#  Baywatch Service OS — Fly.io deployment (single service).
+#
+#  Fly runs the Dockerfile as a persistent VM, so WebSockets, the MQTT client,
+#  the retention scheduler and FFmpeg capture all work — none of which are
+#  possible on a serverless host.
+#
+#  First deploy:
+#    fly launch --no-deploy --copy-config --name baywatch-demo
+#    fly postgres create --name baywatch-db  &&  fly postgres attach baywatch-db
+#    fly redis create                        # sets REDIS_URL
+#    fly volumes create media --size 3
+#    fly secrets set JWT_SECRET=$(openssl rand -hex 32) \
+#                    CUSTOMER_WATCH_BASE_URL=https://<app>.fly.dev \
+#                    CORS_ORIGINS=https://<app>.fly.dev
+#    fly deploy
+#
+#  Note APP_ENV below: `development` keeps SEED_ON_STARTUP working so the demo
+#  has accounts to log in with. Production mode treats auto-seeding of
+#  default-credential users as a hard startup blocker — correctly. For a real
+#  production deploy, seed once, then set APP_ENV=production and
+#  SEED_ON_STARTUP=false, and read DEPLOYMENT_RUNBOOK.md first.
+# ============================================================
+app = "baywatch-demo"
+primary_region = "sin"              # Singapore — closest Fly region to India
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  APP_ENV = "development"
+  SEED_ON_STARTUP = "true"
+  MQTT_ENABLED = "false"            # no broker in a cloud demo; backend timer stays authoritative
+  BW_MEDIA_ROOT = "/app/media"
+  PORT = "8000"
+
+[[mounts]]
+  source = "media"
+  destination = "/app/media"        # recordings, intake media, barricade frames
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  min_machines_running = 1          # keep 1 up: timers + scheduler are per-process
+
+  # Single machine on purpose. Bay timers, the MQTT publisher and the retention
+  # sweeper are per-process; running several would duplicate them.
+  [http_service.concurrency]
+    type = "requests"
+    hard_limit = 200
+    soft_limit = 150
+
+[[http_service.checks]]
+  interval = "15s"
+  timeout = "5s"
+  grace_period = "40s"
+  method = "GET"
+  path = "/ready"                   # 503s unless DB + writable media root are both good
+
+[[vm]]
+  size = "shared-cpu-2x"
+  memory = "2gb"                    # ffmpeg + opencv + pdf rendering need headroom
