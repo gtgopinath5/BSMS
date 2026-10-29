@@ -43,6 +43,58 @@ unreachable the UI shows empty/error states rather than fabricated numbers.
 
 ---
 
+## Hardware architecture
+
+How the software maps onto the physical shop floor. Each diagram is the
+deployment target for one subsystem; the implementation status note under each
+says what is live in the code today versus what still needs hardware on site.
+
+### Camera monitoring and timer-linked recording
+
+![Camera monitoring and timer-linked recording architecture](docs/architecture/diagrams/01-camera-recording-architecture.png)
+
+Admin starts a bay timer, the backend validates the lifecycle transition, and
+the recording pipeline captures that bay's RTSP stream for the duration of the
+job. Video lives on disk or NVR; PostgreSQL stores only metadata and the audit
+trail.
+
+> **Status:** camera registry, real `ffprobe` connection tests, FFmpeg capture
+> and the timer-driven start/stop are implemented and exercised locally.
+> End-to-end recording against a specific camera or NVR model has **not** been
+> validated on site — availability is presence-gated, so an unverified camera
+> reports unavailable rather than showing a false green.
+
+### Wireless bay timers (ESP32 over MQTT)
+
+![16-bay wireless timer system architecture](docs/architecture/diagrams/02-bay-timer-mqtt-architecture.png)
+
+One timer per bay. The backend publishes each bay's countdown over MQTT and
+republishes on reconnect, so a display that outlived a backend restart resyncs
+without drift. The ESP32 only renders what it receives — the backend timer is
+always the source of truth.
+
+> **Status:** backend MQTT publishing, per-bay topic routing and the admin
+> pairing UI are implemented; firmware is in [firmware/esp32_bay_timer](firmware/esp32_bay_timer).
+> The topic scheme in this diagram is illustrative — the authoritative contract
+> is `{prefix}/{bay_number}/{event}` (default prefix `bay`), documented in
+> [docs/MQTT_CONTRACT.md](docs/MQTT_CONTRACT.md).
+
+### GPS test-drive tracking
+
+![GPS test drive tracking architecture](docs/architecture/diagrams/03-gps-test-drive-architecture.png)
+
+A test drive is assigned by an admin, approved by the worker, tracked as a
+route, and completed by the admin. The backend computes every metric — distance
+by Haversine, stop detection, duration — so no client can report its own numbers.
+
+> **Status:** the implemented path uses the **worker's device GPS through the
+> browser** (`navigator.geolocation`); the data model records this as
+> `browser_gps`. The SIM-based tracker and third-party GPS platform shown here
+> are a future hardware option, not what runs today — the schema already
+> accommodates it via the `device_gps` point source.
+
+---
+
 ## Repository layout
 
 ```
