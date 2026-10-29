@@ -1,0 +1,43 @@
+# ── Secrets & local config — never commit ────────────────────────────
+# Real environment files (only *.example templates are tracked).
+.env
+**/.env
+.env.*
+!.env.example
+!**/.env.example
+!**/.env.production.example
+
+# Local-only test/demo credentials — never commit (passwords live here, not in code/memory).
+LOCAL_TEST_CREDENTIALS.md
+.env.test.local
+
+# ── Database backups & dumps (may contain real secrets / customer data) ──
+# Discovery found a real JWT_SECRET inside backups/*.bak — these must never be
+# committed. Keep backups on the server/volume, out of version control.
+backups/
+*.dump
+*.sql
+*.bak
+
+# ── Local databases ──────────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+
+# ── Recording media (local SSD store; lives on a persistent volume) ──
+media/
+backend/media/
+
+# ── Python / tooling ─────────────────────────────────────────────────
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# ── Frontend build (precompiled JSX) ─────────────────────────────────
+# .jsx source files are the source of truth; run `npm run build` (or
+# `npm run watch`) in frontend/ to regenerate .compiled/ before serving.
+frontend/node_modules/
+frontend/.compiled/

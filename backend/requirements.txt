@@ -1,0 +1,47 @@
+# ── Core API (required to boot) ───────────────────────────
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+SQLAlchemy==2.0.36
+pydantic==2.10.4
+pydantic-settings==2.7.1
+python-jose[cryptography]==3.3.0
+passlib==1.7.4          # pbkdf2_sha256 (pure-python); add [bcrypt]/[argon2] for prod
+python-multipart==0.0.20
+
+# ── Databases / cache ─────────────────────────────────────
+# SQLite is built in (default, zero-config local run).
+# For Postgres use DATABASE_URL=postgresql+psycopg://...
+psycopg[binary]==3.2.3
+redis==5.2.1
+alembic==1.14.0
+
+# ── Background tasks ──────────────────────────────────────
+celery==5.4.0
+
+# ── MQTT (ESP32 physical bay timers) ──────────────────────
+paho-mqtt==2.1.0        # backend publishes timer state/events to the broker
+
+# ── Object storage (MinIO / S3) ───────────────────────────
+boto3==1.35.92
+
+# ── Stage features (imported lazily; not needed to boot) ──
+# Parts/job extraction:
+openpyxl==3.1.5         # Excel import
+pdfplumber==0.11.4      # text PDF extraction
+pytesseract==0.3.13     # OCR fallback (needs system `tesseract`)
+pymupdf==1.25.1         # fast PDF parsing
+# Recording / streaming:
+opencv-python-headless==4.10.0.84   # frame capture (needs FFmpeg on host)
+# PDF reports:
+weasyprint==63.1        # HTML->PDF (needs system cairo/pango)
+# Notifications:
+# SMS via MSG91 uses plain HTTP (stdlib urllib) — no SDK required.
+sendgrid==6.11.0
+httpx==0.28.1
+
+# ── Google Drive archival (recording upload via a service account) ──
+# Imported lazily by services/drive_service.py. Absent → archival degrades
+# honestly (recordings stay on local SSD, status reports the missing library);
+# present → real Drive upload into the Date / Bay folder structure.
+google-api-python-client==2.149.0
+google-auth==2.35.0

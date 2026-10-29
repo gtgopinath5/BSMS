@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+  <title>Baywatch — Bike Service OS</title>
+  <link rel="stylesheet" href="css/styles.css"/>
+  <link rel="stylesheet" href="css/admin.css"/>
+  <link rel="stylesheet" href="css/responsive.css"/>
+
+  <!-- Leaflet + OpenStreetMap — admin Bike Test Drive route map (no Google) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <!-- App JSX is precompiled with Babel CLI (npm run build) → .compiled/*.js, so the
+       in-browser Babel transformer is no longer loaded. Edit the source .jsx files. -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/tesseract.min.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+
+  <!-- Backend API client (plain JS, runs before the JSX) -->
+  <script src="js/api.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- Precompiled app scripts (.compiled/*.js) — SAME load order as the source .jsx.
+       parts_data.js stays in its original slot before the features that read it. -->
+  <script src=".compiled/components/icons.js"></script>
+  <script src=".compiled/components/primitives.js"></script>
+  <script src=".compiled/features/profiles.js"></script>
+  <script src="js/parts_data.js"></script>
+  <script src=".compiled/features/partsstore.js"></script>
+  <script src=".compiled/features/partstime.js"></script>
+  <script src=".compiled/features/completion.js"></script>
+  <script src=".compiled/features/integrations.js"></script>
+  <script src=".compiled/features/customer_approvals.js"></script>
+  <script src=".compiled/pages/screens.js"></script>
+  <script src=".compiled/pages/worker.js"></script>
+  <script src=".compiled/pages/admin.js"></script>
+  <script src=".compiled/pages/master.js"></script>
+  <script src=".compiled/live/live.js"></script>
+  <script src=".compiled/app.js"></script>
+</body>
+</html>

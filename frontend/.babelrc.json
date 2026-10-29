@@ -1,0 +1,6 @@
+{
+  "sourceType": "script",
+  "presets": [
+    ["@babel/preset-react", { "runtime": "classic" }]
+  ]
+}

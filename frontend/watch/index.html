@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<meta name="robots" content="noindex,nofollow"/>
+<title>Live Service · Baywatch</title>
+<!--
+  Customer Live Watch — public, passwordless page served same-origin by the backend at
+  /customer-watch/{token}. It renders ONLY backend state (waiting/live/paused/ended) polled
+  from {path}/state and plays the token-scoped HLS proxy at {path}/stream.m3u8. It never sees
+  camera ids, bay ids, branch ids, the internal session id or any RTSP/HLS origin. No login.
+  A visible watermark is applied for deterrence + traceability — browser screenshot/recording
+  prevention is not technically possible, so it is not claimed.
+-->
+<style>
+  :root{
+    --bg-0:#0a0a0b; --bg-1:#0f0f12; --bg-2:#15151a; --bg-3:#1c1c22;
+    --hair:rgba(255,255,255,.06); --hair-strong:rgba(255,255,255,.12);
+    --t-0:#fafafb; --t-1:#d4d4d8; --t-2:#8a8a93; --t-3:#5a5a63;
+    --amber:#ff6b1a; --amber-bright:#ff8a3d; --amber-soft:rgba(255,107,26,.16);
+    --ok:#4ade80; --warn:#fbbf24; --danger:#f43f5e;
+    --radius:10px; --radius-lg:16px;
+    --font-sans:'Geist',ui-sans-serif,system-ui,-apple-system,sans-serif;
+    --font-mono:'JetBrains Mono',ui-monospace,'SF Mono',monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:radial-gradient(120% 80% at 50% 0%,#16161c 0%,var(--bg-0) 60%);
+    color:var(--t-0);font-family:var(--font-sans);-webkit-font-smoothing:antialiased;
+    display:flex;flex-direction:column;min-height:100vh}
+  .wrap{width:100%;max-width:880px;margin:0 auto;padding:18px 16px 28px;display:flex;flex-direction:column;gap:16px;flex:1}
+  .topbar{display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:600;letter-spacing:-.01em}
+  .brand .mark{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--amber-bright),var(--amber));
+    display:grid;place-items:center;color:#1a0d05;font-weight:800;font-size:15px}
+  .brand small{display:block;font-family:var(--font-mono);font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--t-3);font-weight:500}
+  .pill{display:inline-flex;align-items:center;gap:7px;font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--t-2);border:1px solid var(--hair);border-radius:999px;padding:6px 11px;background:var(--bg-2)}
+  .pill .dot{width:7px;height:7px;border-radius:50%;background:var(--t-3)}
+  .pill.live{color:var(--danger)} .pill.live .dot{background:var(--danger);box-shadow:0 0 0 0 rgba(244,63,94,.5);animation:pulse 1.6s infinite}
+  .pill.paused{color:var(--warn)} .pill.paused .dot{background:var(--warn)}
+  .pill.wait{color:var(--info,#38bdf8)} .pill.wait .dot{background:#38bdf8}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(244,63,94,.5)}70%{box-shadow:0 0 0 7px rgba(244,63,94,0)}100%{box-shadow:0 0 0 0 rgba(244,63,94,0)}}
+
+  .stage{position:relative;width:100%;aspect-ratio:16/9;background:#000;border:1px solid var(--hair-strong);
+    border-radius:var(--radius-lg);overflow:hidden;box-shadow:0 30px 80px -40px rgba(0,0,0,.9)}
+  video{width:100%;height:100%;object-fit:contain;background:#000;display:none}
+  .stage.is-live video{display:block}
+
+  /* state overlays (waiting / paused / ended / invalid / loading / error) */
+  .state{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;
+    gap:12px;text-align:center;padding:28px}
+  .state.show{display:flex}
+  .state .ico{width:64px;height:64px;border-radius:18px;display:grid;place-items:center;background:var(--bg-3);
+    border:1px solid var(--hair);color:var(--t-2)}
+  .state h2{margin:0;font-size:19px;font-weight:600;letter-spacing:-.01em}
+  .state p{margin:0;font-size:13.5px;color:var(--t-2);max-width:380px;line-height:1.55}
+  /* completion summary — recording availability (token-gated link only) */
+  .ended-extra{display:flex;flex-direction:column;align-items:center;gap:8px;margin-top:6px}
+  .ended-rec{display:inline-flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;color:#fff;
+    background:var(--amber-bright,#f59e0b);padding:10px 18px;border-radius:10px;text-decoration:none}
+  .ended-note{font-size:12.5px;color:var(--t-2)}
+  .est-appr{font-family:var(--font-mono);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;
+    color:#22c55e;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.3);border-radius:5px;padding:1px 5px;margin-left:4px}
+  .spinner{width:34px;height:34px;border-radius:50%;border:3px solid var(--hair-strong);border-top-color:var(--amber-bright);animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* watermark — visible deterrent + traceability while live */
+  .wm{position:absolute;inset:0;pointer-events:none;display:none}
+  .stage.is-live .wm{display:block}
+  .wm-tag{position:absolute;top:12px;left:12px;display:flex;flex-direction:column;gap:2px;
+    font-family:var(--font-mono);font-size:11px;line-height:1.5;color:rgba(255,255,255,.82);
+    text-shadow:0 1px 3px rgba(0,0,0,.9);background:rgba(0,0,0,.28);backdrop-filter:blur(2px);
+    padding:8px 11px;border-radius:10px;border:1px solid rgba(255,255,255,.12)}
+  .wm-tag b{color:#fff;font-weight:600}
+  .wm-big{position:absolute;inset:0;display:grid;place-items:center;
+    font-family:var(--font-mono);font-size:clamp(18px,5vw,34px);font-weight:700;letter-spacing:.18em;
+    color:rgba(255,255,255,.06);transform:rotate(-18deg);text-transform:uppercase;white-space:nowrap}
+  .liveflag{position:absolute;top:12px;right:12px;font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;
+    color:#fff;background:rgba(244,63,94,.85);padding:5px 9px;border-radius:8px;display:flex;align-items:center;gap:6px}
+  .liveflag .d{width:7px;height:7px;border-radius:50%;background:#fff;animation:pulse 1.6s infinite}
+
+  .meta{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--hair);border:1px solid var(--hair);
+    border-radius:var(--radius-lg);overflow:hidden}
+  .meta .cell{background:var(--bg-2);padding:13px 16px;min-width:0}
+  .meta .k{font-family:var(--font-mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--t-3)}
+  .meta .v{font-size:14px;color:var(--t-0);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .foot{text-align:center;font-size:11.5px;color:var(--t-3);line-height:1.6}
+  .foot b{color:var(--t-2);font-weight:500}
+  @media(max-width:520px){.meta{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand"><span class="mark">B</span><div>Baywatch<small>Live Service</small></div></div>
+      <span class="pill" id="pill"><span class="dot"></span><span id="pillTxt">Connecting…</span></span>
+    </div>
+
+    <div class="stage" id="stage">
+      <video id="video" playsinline muted autoplay controls></video>
+
+      <div class="wm" id="wm">
+        <div class="wm-big" id="wmBig"></div>
+        <div class="wm-tag" id="wmTag"></div>
+        <div class="liveflag"><span class="d"></span>LIVE</div>
+      </div>
+
+      <div class="state show" id="st-loading">
+        <div class="spinner"></div>
+        <p>Loading your live service…</p>
+      </div>
+      <div class="state" id="st-waiting">
+        <div class="ico">⏳</div>
+        <h2>Your live session is getting ready</h2>
+        <p>The live stream will begin automatically the moment your service starts. You can keep this page open.</p>
+      </div>
+      <div class="state" id="st-paused">
+        <div class="ico">⏸</div>
+        <h2>Service temporarily paused</h2>
+        <p>Your technician has paused the service. The live stream will resume automatically — please wait.</p>
+      </div>
+      <div class="state" id="st-ended">
+        <div class="ico">✓</div>
+        <h2 id="endedTitle">Service completed</h2>
+        <p id="endedMsg">This live session has ended. Thank you for choosing us.</p>
+        <div id="endedExtra" class="ended-extra"></div>
+      </div>
+      <div class="state" id="st-invalid">
+        <div class="ico">⚠</div>
+        <h2>Link not available</h2>
+        <p id="invalidMsg">This live link is invalid or is no longer active.</p>
+      </div>
+      <div class="state" id="st-error">
+        <div class="ico">⚠</div>
+        <h2>Connection problem</h2>
+        <p>We couldn't reach the live service. Retrying…</p>
+      </div>
+    </div>
+
+    <div class="meta" id="meta" style="display:none">
+      <div class="cell"><div class="k">Customer</div><div class="v" id="mCust">—</div></div>
+      <div class="cell"><div class="k">Vehicle</div><div class="v" id="mVeh">—</div></div>
+      <div class="cell"><div class="k">Estimate</div><div class="v" id="mEst">—</div></div>
+      <div class="cell"><div class="k">Status</div><div class="v" id="mStat">—</div></div>
+    </div>
+
+    <div class="foot">
+      <b>Private link</b> · for you only · one service session<br/>
+      A visible watermark is shown for your protection. This page never exposes camera or system details.
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
+  <script>
+  (function(){
+    var BASE = location.pathname.replace(/\/$/,'');     // /customer-watch/{token}
+    var STATE_URL = BASE + '/state';
+    var STREAM_URL = BASE + '/stream.m3u8';
+    var video = document.getElementById('video');
+    var stage = document.getElementById('stage');
+    var hls = null, clockTimer = null, baseTime = null, baseAt = 0, lastState = null, dead = false;
+
+    function show(id){
+      ['loading','waiting','paused','ended','invalid','error'].forEach(function(s){
+        document.getElementById('st-'+s).classList.toggle('show', s===id);
+      });
+    }
+    function pill(cls, txt){
+      var p = document.getElementById('pill');
+      p.className = 'pill' + (cls?(' '+cls):'');
+      document.getElementById('pillTxt').textContent = txt;
+    }
+    function teardown(){
+      stage.classList.remove('is-live');
+      if(hls){ try{hls.destroy();}catch(e){} hls=null; }
+      try{ video.removeAttribute('src'); video.load(); }catch(e){}
+    }
+    function play(){
+      if(stage.classList.contains('is-live') && (hls || video.src)) return;  // already live
+      stage.classList.add('is-live');
+      if(window.Hls && Hls.isSupported()){
+        hls = new Hls({liveDurationInfinity:true, lowLatencyMode:true});
+        hls.loadSource(STREAM_URL);
+        hls.attachMedia(video);
+        hls.on(Hls.Events.ERROR, function(_e, data){
+          // Keep the live frame + watermark on a transient error (segment not ready yet);
+          // recover instead of tearing down. State polling drives paused/ended transitions.
+          if(data && data.fatal && data.type === Hls.ErrorTypes.MEDIA_ERROR){ try{ hls.recoverMediaError(); }catch(e){} }
+        });
+      } else if(video.canPlayType('application/vnd.apple.mpegurl')){
+        video.src = STREAM_URL;                 // Safari / iOS native HLS
+      }
+      var pr = video.play(); if(pr && pr.catch) pr.catch(function(){});
+    }
+    function startClock(){
+      if(clockTimer) return;
+      clockTimer = setInterval(function(){
+        if(!baseTime) return;
+        var now = new Date(baseTime.getTime() + (Date.now()-baseAt));
+        var hh=String(now.getHours()).padStart(2,'0'), mm=String(now.getMinutes()).padStart(2,'0'), ss=String(now.getSeconds()).padStart(2,'0');
+        var el = document.getElementById('wmTime'); if(el) el.textContent = hh+':'+mm+':'+ss;
+      }, 1000);
+    }
+    function watermark(d){
+      document.getElementById('wmBig').textContent = (d.vehicle_number || d.customer_name || 'LIVE');
+      document.getElementById('wmTag').innerHTML =
+        '<span><b>'+esc(d.customer_name||'Customer')+'</b></span>' +
+        '<span>'+esc(d.vehicle_number||'')+'</span>' +
+        '<span id="wmTime">—</span>' +
+        '<span style="color:rgba(255,255,255,.55)">'+esc(d.session_display_id||'')+'</span>';
+      if(d.server_time){ baseTime = new Date(d.server_time); baseAt = Date.now(); startClock(); }
+    }
+    function meta(d, statusTxt){
+      document.getElementById('meta').style.display='';
+      document.getElementById('mCust').textContent = d.customer_name || '—';
+      document.getElementById('mVeh').textContent = d.vehicle_number || '—';
+      document.getElementById('mStat').textContent = statusTxt;
+      var estEl = document.getElementById('mEst');
+      if(estEl){
+        var est = (d.estimated_minutes!=null) ? (d.estimated_minutes + ' min') : '—';
+        if(d.state==='live' && d.remaining_seconds!=null){
+          est += ' · ' + Math.max(0, Math.round(d.remaining_seconds/60)) + 'm left';
+        }
+        if(d.estimate_source==='approved'){
+          if(d.approved_cost!=null) est += ' · ₹' + Math.round(d.approved_cost);
+          estEl.innerHTML = esc(est) + ' <span class="est-appr">approved</span>';
+        } else {
+          estEl.textContent = est;
+        }
+      }
+    }
+    function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+
+    function apply(d){
+      lastState = d.state;
+      if(d.state==='live'){
+        pill('live','Live now'); show(''); watermark(d); meta(d,'Live'); play();   // show('') hides all state overlays
+      } else if(d.state==='paused'){
+        pill('paused','Paused'); teardown(); show('paused'); meta(d,'Paused');
+      } else if(d.state==='completed'){
+        meta(d,'Completed'); completedView(d);   // terminal — show summary + recording
+      } else { // waiting
+        pill('wait','Starting soon'); teardown(); show('waiting'); meta(d,'Waiting to start');
+      }
+    }
+    function completedView(d){
+      dead = true; pill('', 'Completed'); teardown();   // terminal: stop polling
+      document.getElementById('endedTitle').textContent = 'Service completed';
+      document.getElementById('endedMsg').textContent = d.service_message || 'Your service is complete. Thank you for choosing us.';
+      var extra = document.getElementById('endedExtra');
+      if(extra){
+        var html = '';
+        if(d.recording_available && d.recording_url){
+          html += '<a class="ended-rec" href="'+esc(d.recording_url)+'" target="_blank" rel="noopener">▶ View your service recording</a>';
+          if(d.recording_expiry) html += '<div class="ended-note">Available until '+esc(d.recording_expiry)+'</div>';
+        } else if(d.recording_status==='expired'){
+          html += '<div class="ended-note">The recording for this service has expired.</div>';
+        } else {
+          html += '<div class="ended-note">A recording was not available for this service.</div>';
+        }
+        extra.innerHTML = html;
+      }
+      show('ended');
+    }
+    function ended(msg){
+      dead = true; pill('', 'Ended'); teardown();
+      document.getElementById('endedMsg').textContent = msg || 'This live session has ended.';
+      show('ended');
+      var m=document.getElementById('mStat'); if(m) m.textContent='Ended';
+    }
+
+    function poll(){
+      if(dead) return;
+      fetch(STATE_URL, {cache:'no-store'}).then(function(r){
+        if(r.status===410){ r.json().catch(function(){return{};}).then(function(b){ ended(b && b.message); }); return null; }
+        if(r.status===404){ teardown(); pill('','Unavailable'); show('invalid'); return null; }
+        if(!r.ok){ show('error'); pill('','Reconnecting'); return null; }
+        return r.json();
+      }).then(function(j){
+        if(j && j.data) apply(j.data);
+      }).catch(function(){ if(!dead) { /* keep last view, retry */ } });
+    }
+
+    poll();
+    setInterval(poll, 4000);
+  })();
+  </script>
+</body>
+</html>

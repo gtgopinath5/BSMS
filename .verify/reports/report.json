@@ -1,0 +1,191 @@
+{
+  "started": "2026-06-12T12:31:28.120Z",
+  "checks": [
+    {
+      "name": "admin portal loaded after login",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "fleet rows rendered",
+      "ok": true,
+      "detail": "7 rows"
+    },
+    {
+      "name": "6 summary KPIs",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "attention bays sorted first",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "unstaffed bays flagged in list",
+      "ok": true,
+      "detail": "2 unstaffed"
+    },
+    {
+      "name": "search filters rows",
+      "ok": true,
+      "detail": "7 → 1"
+    },
+    {
+      "name": "drawer shows worker",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "drawer shows camera section",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "drawer shows ESP32/MQTT section",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "drawer has Replace Worker",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "drawer has device actions",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "replace modal: reason + dates (temp cover)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "replace modal explains bay stays unchanged",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "drawer: Bay Information section",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "drawer: MQTT broker status row",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "drawer: Danger Zone section",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "danger action asks for confirmation",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Escape closes the drawer",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "unstaffed drawer: not-operational notice",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "unstaffed drawer: Assign Primary Worker action",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "NO worker dropdown in job form",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "bay-first picker present",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "BAY-FIRST tag visible",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "unstaffed bays disabled in picker",
+      "ok": true,
+      "detail": "BAY 05 · — · 🔒 unstaffed — staff it in Bay Management"
+    },
+    {
+      "name": "worker auto-resolves from bay",
+      "ok": true,
+      "detail": "KR"
+    },
+    {
+      "name": "45 scale-test bays created via API",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "fleet shows 52 bays",
+      "ok": true,
+      "detail": "KPI total=52"
+    },
+    {
+      "name": "virtual scrolling active (DOM rows < total)",
+      "ok": true,
+      "detail": "25 rendered of 52"
+    },
+    {
+      "name": "KPIs + toolbar + header stay fixed while list scrolls",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "window moves with scroll (still capped)",
+      "ok": true,
+      "detail": "25 rendered"
+    },
+    {
+      "name": "scale-test bays cleaned up",
+      "ok": true,
+      "detail": "45/45 deleted"
+    },
+    {
+      "name": "fleet back to 7 bays after cleanup",
+      "ok": true,
+      "detail": "total=7"
+    },
+    {
+      "name": "zero JS errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "zero failed API requests",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "jsErrors": [],
+  "failedRequests": [],
+  "shots": [
+    "desktop/01-fleet-view.png",
+    "desktop/02-fleet-search.png",
+    "desktop/03-drawer-staffed.png",
+    "desktop/04-replace-worker-modal.png",
+    "desktop/09-drawer-danger-zone.png",
+    "desktop/05-drawer-unstaffed.png",
+    "desktop/06-bayfirst-job-modal.png",
+    "desktop/10-fleet-52-bays-virtualized.png",
+    "tablet/07-fleet-tablet.png",
+    "mobile/08-fleet-mobile.png"
+  ],
+  "finished": "2026-06-12T12:31:50.354Z",
+  "summary": "34/34 checks passed"
+}

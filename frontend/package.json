@@ -1,0 +1,25 @@
+{
+  "name": "baywatch-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Baywatch Service OS frontend — JSX is precompiled with Babel CLI (classic, global-script) so the browser never loads the in-browser Babel transformer. Source of truth is the .jsx files; never edit .compiled/ by hand.",
+  "scripts": {
+    "clean": "rm -rf .compiled",
+    "build:components": "babel components --extensions \".jsx\" --out-dir .compiled/components --source-maps inline",
+    "build:features": "babel features --extensions \".jsx\" --out-dir .compiled/features --source-maps inline",
+    "build:pages": "babel pages --extensions \".jsx\" --out-dir .compiled/pages --source-maps inline",
+    "build:live": "babel live --extensions \".jsx\" --out-dir .compiled/live --source-maps inline",
+    "build:app": "babel app.jsx --out-file .compiled/app.js --source-maps inline",
+    "build": "npm run clean && npm run build:components && npm run build:features && npm run build:pages && npm run build:live && npm run build:app",
+    "watch:components": "babel components --extensions \".jsx\" --out-dir .compiled/components --source-maps inline --watch",
+    "watch:features": "babel features --extensions \".jsx\" --out-dir .compiled/features --source-maps inline --watch",
+    "watch:pages": "babel pages --extensions \".jsx\" --out-dir .compiled/pages --source-maps inline --watch",
+    "watch:live": "babel live --extensions \".jsx\" --out-dir .compiled/live --source-maps inline --watch",
+    "watch:app": "babel app.jsx --out-file .compiled/app.js --source-maps inline --watch"
+  },
+  "devDependencies": {
+    "@babel/cli": "^7.26.0",
+    "@babel/core": "^7.26.0",
+    "@babel/preset-react": "^7.26.3"
+  }
+}

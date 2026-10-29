@@ -1,0 +1,16 @@
+# AI Barricade detection service (Phase D) — install in a DEDICATED venv, separate from the BSMS
+# backend venv. Ultralytics/torch need a torch-supported Python (3.10–3.12 recommended); on a
+# Python version without a torch wheel the service still runs in MOCK mode (see detector.py) so the
+# API contract + ingest workflow work offline — real inference simply needs this venv.
+#
+#   python3.12 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt
+#   BSMS_BACKEND_URL=http://localhost:8000/api/v1 BARRICADE_INTERNAL_TOKEN=... \
+#     uvicorn app:app --port 8811
+
+ultralytics>=8.3.0            # YOLO (pulls torch, torchvision)
+opencv-python-headless>=4.9   # image decode + optional short-video frame sampling (no GUI)
+pillow>=10.0                  # image IO (mock path uses this alone)
+fastapi>=0.110                # the service HTTP API
+uvicorn[standard]>=0.29       # ASGI server
+python-multipart>=0.0.9       # multipart file uploads
+requests>=2.31               # backend ingest POST (client falls back to stdlib urllib if absent)

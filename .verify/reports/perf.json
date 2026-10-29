@@ -1,0 +1,37 @@
+{
+  "measured_at": "2026-06-12 22:38:21",
+  "samples": [
+    {
+      "target": 10,
+      "actual_bays": 10,
+      "p50_ms": 5.8,
+      "min_ms": 5.6,
+      "max_ms": 5.9,
+      "payload_kb": 4.3
+    },
+    {
+      "target": 25,
+      "actual_bays": 25,
+      "p50_ms": 5.8,
+      "min_ms": 5.6,
+      "max_ms": 6.3,
+      "payload_kb": 9.7
+    },
+    {
+      "target": 50,
+      "actual_bays": 50,
+      "p50_ms": 7.2,
+      "min_ms": 7.0,
+      "max_ms": 7.4,
+      "payload_kb": 18.8
+    },
+    {
+      "target": 100,
+      "actual_bays": 100,
+      "p50_ms": 9.1,
+      "min_ms": 8.4,
+      "max_ms": 9.4,
+      "payload_kb": 36.9
+    }
+  ]
+}

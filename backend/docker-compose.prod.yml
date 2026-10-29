@@ -1,0 +1,94 @@
+# ════════════════════════════════════════════════════════════════════
+#  BAYWATCH — PRODUCTION compose (hardened). The dev docker-compose.yml is
+#  left untouched; use this file explicitly:
+#
+#     docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+#
+#  Differences from dev: no source hot-mount, restart policies, healthchecks,
+#  named volumes, Postgres not exposed to the host, single web process, and an
+#  optional nginx that serves the frontend + reverse-proxies the API so the
+#  customer-watch / approval pages are same-origin.
+#
+#  ⚠ SINGLE WEB PROCESS ONLY. The backend starts the recording scheduler + the
+#  MQTT client in-process at startup; running multiple web workers would double
+#  the retention sweeps and collide on the MQTT client id. Scale vertically, or
+#  externalise those workers before scaling web replicas.
+# ════════════════════════════════════════════════════════════════════
+services:
+  fastapi:
+    build: .
+    restart: unless-stopped
+    # one web process (see note above) — do NOT add --workers >1.
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    env_file: .env.production
+    environment:
+      # keep DATABASE_URL/REDIS_URL pointing at the compose services
+      DATABASE_URL: postgresql+psycopg://baywatch:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.production}@postgres:5432/baywatch
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      BW_MEDIA_ROOT: /data/media
+    volumes:
+      - media:/data/media               # persistent recordings (NOT the source tree)
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      # readiness probe — 503 when DB/media are not serviceable
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/ready').status==200 else 1)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    # no host port by default — front it with the nginx service / your LB.
+    expose: ["8000"]
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: baywatch
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.production}
+      POSTGRES_DB: baywatch
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U baywatch -d baywatch"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # NOT exposed to the host in production (reach it via the app network only).
+    expose: ["5432"]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    expose: ["6379"]
+
+  # Optional: serve the no-build frontend + reverse-proxy the API so the public
+  # customer-watch/approval pages are same-origin. Provide your own nginx.conf
+  # (proxy /api, /ws, /hls, /customer-watch, /customer-approval → fastapi:8000;
+  # serve / from the mounted frontend). Remove this service if you front the app
+  # with an external LB/ingress instead.
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on: [fastapi]
+    ports:
+      - "80:80"
+      # - "443:443"   # terminate TLS here or at your LB
+    volumes:
+      - ../frontend:/usr/share/nginx/html:ro          # the Babel-standalone SPA
+      - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro   # provide this file
+    profiles: ["with-nginx"]    # opt in:  --profile with-nginx
+
+volumes:
+  pgdata:
+  redisdata:
+  media:

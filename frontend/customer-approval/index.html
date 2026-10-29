@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="robots" content="noindex,nofollow" />
+<title>Parts Approval</title>
+<!--
+  Customer Estimate Approval — public, login-less job-card-style page served same-origin by the
+  backend at /customer-approval/{token}. Renders ONLY this approval (resolved server-side from the
+  opaque token); never exposes internal branch/queue/job-card/admin ids or the token_hash.
+  ALL business data (dealer/customer/vehicle/service/parts/costs) is dynamic from the backend
+  version snapshot. The same page also runs in admin PREVIEW mode at /customer-approval/preview,
+  where it receives the preview snapshot via same-origin postMessage and is fully read-only
+  (no data fetch, no submit). Totals shown live are advisory; the backend is authoritative.
+-->
+<style>
+  :root{
+    --paper:#ffffff; --canvas:#eceef0;
+    --ink:#1a1a1a; --ink-2:#41444a; --muted:#6a6e74;
+    --line:#dcdde0; --line-2:#cfd1d5; --rule:#1a1a1a; --field:#fafbfc;
+    --accent:#b11116;
+    --ap:#1f7a3d; --ap-tint:#f1faf3; --ap-line:#cce8d4; --ap-soft:#e7f5ec;
+    --md:#c8102e; --md-tint:#fdf2f3; --md-line:#f2cdd2; --md-soft:#fbe6e9;
+    --sg:#caa000; --sg-text:#8a5a00; --sg-tint:#fffae8; --sg-line:#eedfa6; --sg-soft:#fdf3cf;
+    --f-sans:"Helvetica Neue",Helvetica,Arial,"Segoe UI",Roboto,system-ui,sans-serif;
+    --f-mono:"Courier New",ui-monospace,SFMono-Regular,Menlo,monospace;
+    --r:10px; --r-lg:14px; --pill:999px;
+    --shadow:0 10px 34px rgba(20,20,22,.12),0 2px 8px rgba(20,20,22,.06);
+    --shadow-sm:0 1px 2px rgba(20,20,22,.06);
+    --shadow-lg:0 28px 70px rgba(20,20,22,.28);
+    --bar-h:76px;
+  }
+  *{ box-sizing:border-box; }
+  html{ -webkit-text-size-adjust:100%; }
+  body{ margin:0; background:var(--canvas); color:var(--ink); font-family:var(--f-sans); font-size:15px; line-height:1.5;
+    -webkit-font-smoothing:antialiased; padding:18px 14px calc(var(--bar-h) + env(safe-area-inset-bottom) + 18px); }
+  body.no-bar{ padding-bottom:24px; }
+  .mono{ font-family:var(--f-mono); font-variant-numeric:tabular-nums; }
+
+  @keyframes riseIn{ from{ opacity:0; transform:translateY(12px); } to{ opacity:1; transform:none; } }
+  @keyframes popIn{ 0%{ opacity:0; transform:scale(.96) translateY(8px); } 60%{ opacity:1; } 100%{ opacity:1; transform:none; } }
+  @keyframes pulse{ 0%{ transform:scale(1);} 40%{ transform:scale(1.06);} 100%{ transform:scale(1);} }
+  @keyframes tap{ 0%{ transform:scale(1);} 35%{ transform:scale(.985);} 100%{ transform:scale(1);} }
+  @keyframes riseUp{ to{ transform:translateY(0); } }
+  @keyframes ringOut{ 0%{ transform:scale(.45); opacity:.55; } 100%{ transform:scale(1.9); opacity:0; } }
+  @keyframes sealPop{ 0%{ transform:scale(.4); opacity:0; } 55%{ transform:scale(1.08); opacity:1; } 100%{ transform:scale(1); } }
+  @keyframes drawCheck{ to{ stroke-dashoffset:0; } }
+
+  .sheet{ max-width:880px; margin:0 auto; background:var(--paper); border:1px solid var(--line);
+    border-radius:var(--r-lg); box-shadow:var(--shadow); overflow:hidden; animation:riseIn .5s ease both; }
+  .pad{ padding:clamp(18px,4vw,34px); }
+
+  .ribbon{ display:flex; align-items:center; gap:9px; flex-wrap:wrap; background:var(--field);
+    border-bottom:1px solid var(--line); padding:9px clamp(18px,4vw,34px); font-size:11.5px; color:var(--ink-2); }
+  .ribbon .dot{ width:7px;height:7px;border-radius:50%;background:var(--ap);box-shadow:0 0 0 3px rgba(31,122,61,.16); animation:pulse 2.4s ease-in-out infinite; }
+  .ribbon b{ color:var(--ink); }
+  .ribbon .exp{ margin-left:auto; color:var(--md); font-weight:700; }
+  .ribbon.preview .dot{ background:var(--sg); box-shadow:0 0 0 3px rgba(202,160,0,.18); }
+  .ribbon.preview .exp{ color:var(--sg-text); }
+
+  .jc-head{ display:grid; grid-template-columns:1.2fr .9fr 1.25fr; gap:18px; align-items:start; }
+  .dealer .nm{ font-weight:700; font-size:15px; line-height:1.18; }
+  .dealer .ad{ font-size:10.5px; color:var(--muted); line-height:1.55; margin-top:6px; }
+  .title-blk{ text-align:center; padding-top:4px; }
+  .title-blk .mono-logo{ width:46px;height:46px;border-radius:11px;background:var(--ink);color:#fff;display:grid;place-items:center;
+    font-weight:800;font-size:20px;margin:0 auto 8px; }
+  .title-blk .jc{ font-size:21px; font-weight:700; letter-spacing:.06em; color:var(--ink); }
+  .title-blk .sb{ font-size:10px; letter-spacing:.2em; text-transform:uppercase; color:var(--accent); font-weight:700; margin-top:6px; }
+  .summary{ display:grid; grid-template-columns:auto 1fr; gap:4px 10px; font-size:11.5px; align-items:baseline; }
+  .summary .sl{ color:var(--muted); white-space:nowrap; }
+  .summary .sv{ font-weight:700; }
+  .numline{ text-align:center; font-size:11.5px; margin-top:16px; padding-top:11px; border-top:1px solid var(--line); color:var(--ink-2); }
+  .numline b{ font-family:var(--f-mono); }
+  .rule{ height:2px; background:var(--ink); margin:14px 0 0; }
+
+  .sec{ margin:26px 0 10px; animation:riseIn .5s ease both; }
+  .sec-h{ display:flex; align-items:center; gap:9px; border-bottom:2px solid var(--rule); padding-bottom:5px; flex-wrap:wrap; }
+  .sec-h .tick{ width:4px;height:14px;background:var(--accent);flex:none;border-radius:1px; }
+  .sec-h .tick.ap{ background:var(--ap); } .sec-h .tick.md{ background:var(--md); } .sec-h .tick.sg{ background:var(--sg); }
+  .sec-h h2{ font-size:13px; font-weight:700; letter-spacing:.02em; text-transform:uppercase; margin:0; }
+  .sec-h .ct{ font-family:var(--f-mono); font-size:11.5px; color:var(--muted); }
+  .sec-note{ font-size:12px; color:var(--muted); margin:8px 2px 12px; }
+
+  .info{ display:grid; grid-template-columns:repeat(4,auto 1fr); border:1px solid var(--line); border-radius:var(--r); overflow:hidden; }
+  .info .c{ padding:9px 12px; border-bottom:1px solid var(--line); font-size:13px; }
+  .info .k{ background:var(--field); color:var(--muted); font-size:10.5px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; white-space:nowrap; display:flex; align-items:center; }
+  .info .v{ font-weight:500; word-break:break-word; }
+  .info .v.code{ font-family:var(--f-mono); }
+  .info .full{ grid-column:2 / -1; }
+  .info .klabel.full{ grid-column:1 / 2; }
+
+  .voice{ border:1px solid var(--line); border-left:3px solid var(--accent); border-radius:var(--r); background:#fffdfa; padding:13px 15px; font-size:13.5px; color:var(--ink-2); line-height:1.6; }
+
+  .cards{ display:flex; flex-direction:column; gap:12px; }
+  .pcard{ position:relative; border:1px solid var(--line); border-radius:var(--r); padding:15px 16px 14px;
+    background:var(--paper); box-shadow:var(--shadow-sm); overflow:hidden;
+    animation:popIn .42s cubic-bezier(.2,.8,.2,1) both;
+    transition:background .2s ease, border-color .2s ease, transform .18s ease, box-shadow .18s ease; }
+  .pcard:hover{ transform:translateY(-2px); box-shadow:var(--shadow); }
+  .pcard.tap{ animation:tap .22s ease; }
+  .pcard::before{ content:""; position:absolute; left:0; top:0; bottom:0; width:5px; }
+  .pcard.ap::before{ background:var(--ap); } .pcard.md::before{ background:var(--md); } .pcard.sg::before{ background:var(--sg); }
+  .pcard.ap{ background:var(--ap-tint); border-color:var(--ap-line); }
+  .pcard.md{ background:var(--md-tint); border-color:var(--md-line); }
+  .pcard.sg{ background:var(--sg-tint); border-color:var(--sg-line); }
+
+  .pc-top{ display:flex; align-items:flex-start; gap:9px; flex-wrap:wrap; }
+  .pc-tag{ font-family:var(--f-mono); font-size:9.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; padding:3px 7px; border-radius:5px; flex:none; margin-top:2px; }
+  .pcard.ap .pc-tag{ color:var(--ap); background:var(--ap-soft); }
+  .pcard.md .pc-tag{ color:var(--md); background:var(--md-soft); }
+  .pcard.sg .pc-tag{ color:var(--sg-text); background:var(--sg-soft); }
+  .pc-check{ display:none; align-items:center; gap:4px; font-size:9.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+    color:#fff; background:var(--ink); padding:3px 7px; border-radius:5px; flex:none; margin-top:2px; }
+  .pc-check svg{ width:11px;height:11px; stroke:#fff; }
+  .pcard.sel .pc-check{ display:inline-flex; }
+  .pc-name{ font-weight:700; font-size:15.5px; line-height:1.25; flex:1; min-width:140px; }
+  .pc-total{ margin-left:auto; text-align:right; flex:none; }
+  .pc-total .pl{ font-size:9.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:700; }
+  .pc-total .pv{ font-family:var(--f-mono); font-size:16px; font-weight:700; }
+
+  .pc-meta{ display:flex; flex-wrap:wrap; gap:6px; margin-top:9px; }
+  .pc-meta .m{ font-family:var(--f-mono); font-size:11px; color:var(--ink-2); background:var(--paper); border:1px solid var(--line); border-radius:var(--pill); padding:3px 9px; }
+  .pc-meta .m b{ color:var(--muted); font-weight:700; }
+
+  .pc-desc{ margin:11px 0 0; font-size:13.5px; color:var(--ink-2); line-height:1.5; }
+  .pc-improve{ margin:9px 0 0; font-size:12.5px; line-height:1.5; color:var(--sg-text); background:var(--sg-soft); border-radius:8px; padding:8px 11px; display:flex; gap:8px; }
+  .pc-improve svg{ width:15px;height:15px; flex:none; margin-top:1px; stroke:var(--sg-text); }
+
+  .pc-foot{ display:flex; align-items:center; gap:14px; margin-top:13px; padding-top:12px; border-top:1px solid var(--line); flex-wrap:wrap; }
+  .pcard.ap .pc-foot{ border-color:var(--ap-line); } .pcard.md .pc-foot{ border-color:var(--md-line); } .pcard.sg .pc-foot{ border-color:var(--sg-line); }
+  .pc-costs{ display:flex; gap:18px; }
+  .pc-costs .c .cl{ font-size:10px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:700; }
+  .pc-costs .c .cv{ font-family:var(--f-mono); font-size:13.5px; font-weight:700; margin-top:1px; }
+  .pc-foot .sp{ margin-left:auto; }
+
+  .tbtn{ cursor:pointer; touch-action:manipulation; -webkit-tap-highlight-color:transparent;
+    font-family:var(--f-sans); font-weight:600; font-size:12.5px;
+    background:var(--ink); color:#fff; border:1px solid var(--ink); border-radius:8px;
+    padding:7px 14px; min-height:38px; min-width:104px; display:inline-flex; align-items:center; justify-content:center; gap:7px;
+    transition:background .16s, color .16s, border-color .16s, transform .08s; }
+  .tbtn svg{ width:15px;height:15px; }
+  .tbtn:hover{ background:#33333a; }
+  .tbtn:active{ transform:scale(.96); }
+  .tbtn:focus-visible{ outline:3px solid rgba(26,26,26,.3); outline-offset:2px; }
+  .tbtn.on{ background:transparent; color:var(--md); border-color:var(--md-line); }
+  .tbtn.on:hover{ background:var(--md-soft); border-color:var(--md); }
+  body.ro .tbtn{ display:none; }
+
+  .btn{ cursor:pointer; touch-action:manipulation; font-family:var(--f-sans); font-weight:600; font-size:13px; color:var(--ink);
+    background:var(--paper); border:1px solid var(--line-2); border-radius:8px; padding:7px 12px; min-height:40px;
+    display:inline-flex; align-items:center; justify-content:center; gap:7px; transition:background .14s, border-color .14s, transform .08s; }
+  .btn svg{ width:15px;height:15px; }
+  .btn:hover{ background:var(--field); } .btn:active{ transform:scale(.96); }
+  .btn:focus-visible{ outline:3px solid rgba(26,26,26,.3); outline-offset:2px; }
+  .btn.primary{ background:var(--ink); color:#fff; border-color:var(--ink); } .btn.primary:hover{ background:#33333a; }
+  .btn[disabled]{ opacity:.45; pointer-events:none; }
+
+  .footnote{ text-align:center; color:var(--muted); font-size:11px; padding:18px 18px 4px; line-height:1.6; }
+
+  .bar{ position:fixed; left:0; right:0; bottom:0; z-index:40; background:rgba(255,255,255,.94);
+    backdrop-filter:saturate(180%) blur(10px); border-top:1px solid var(--line);
+    padding:11px 16px calc(11px + env(safe-area-inset-bottom)); transform:translateY(100%); animation:riseUp .5s .25s ease forwards; }
+  .bar.hide{ display:none; }
+  .bar-in{ max-width:880px; margin:0 auto; display:flex; align-items:center; gap:14px; }
+  .bar .tl{ font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); font-weight:700; }
+  .bar .tv{ font-family:var(--f-mono); font-size:22px; font-weight:700; line-height:1.1; transform-origin:left center; }
+  .bar .tv.bump{ animation:pulse .34s ease; }
+  .bar .ts{ font-size:11px; color:var(--muted); font-family:var(--f-mono); }
+  .bar .btn.primary{ margin-left:auto; min-height:48px; padding:12px 22px; font-size:14.5px; flex:none; }
+
+  .scrim{ position:fixed; inset:0; z-index:60; background:rgba(20,20,22,.55); opacity:0; pointer-events:none; transition:opacity .22s; }
+  .scrim.open{ opacity:1; pointer-events:auto; }
+  .review{ position:fixed; left:50%; top:50%; z-index:61; width:min(580px,94vw); max-height:min(86vh,820px);
+    display:flex; flex-direction:column; overflow:hidden;
+    transform:translate(-50%,-46%) scale(.97); opacity:0; pointer-events:none; transition:transform .26s cubic-bezier(.2,.85,.2,1), opacity .2s;
+    background:var(--paper); border-radius:var(--r-lg); box-shadow:var(--shadow-lg); }
+  .review.open{ transform:translate(-50%,-50%) scale(1); opacity:1; pointer-events:auto; }
+  .rv-x{ position:absolute; right:14px; top:14px; z-index:2; width:34px;height:34px;border-radius:8px;border:1px solid var(--line); background:var(--paper); cursor:pointer; font-size:18px; color:var(--muted); line-height:1; }
+  .rv-x:hover{ background:var(--field); }
+  .rv-body{ padding:16px 20px 4px; flex:1 1 auto; overflow-y:auto; -webkit-overflow-scrolling:touch; }
+  .rv-empty{ padding:24px; text-align:center; color:var(--muted); }
+  .rv-act{ display:flex; gap:10px; padding:14px 20px calc(18px + env(safe-area-inset-bottom)); flex:none; background:var(--paper); border-top:1px solid var(--line); }
+  .rv-act .btn{ flex:1; min-height:48px; font-size:14.5px; }
+
+  .rv-top{ display:flex; align-items:flex-start; gap:12px; padding:20px 20px 14px; border-bottom:1px solid var(--line); position:relative; flex:none; }
+  .rv-top::before{ content:""; position:absolute; left:0; right:0; top:0; height:4px; background:linear-gradient(90deg,var(--ap) 0 33.3%,var(--md) 33.3% 66.6%,var(--sg) 66.6% 100%); }
+  .rv-ic{ width:40px;height:40px;flex:none;border-radius:11px;background:var(--ink);display:grid;place-items:center; }
+  .rv-ic svg{ width:22px;height:22px; }
+  .rv-ttl{ flex:1; min-width:0; }
+  .rv-ttl h3{ margin:0; font-size:18px; font-weight:700; }
+  .rv-ttl p{ margin:3px 0 0; font-size:12px; color:var(--muted); }
+  .dotc{ display:inline-block; width:8px;height:8px;border-radius:50%; vertical-align:middle; flex:none; }
+  .dot-ap{ background:var(--ap); } .dot-md{ background:var(--md); } .dot-sg{ background:var(--sg); }
+  .rv-sumchips{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .rv-sumchips .sc{ font-size:11.5px; font-weight:600; border-radius:var(--pill); padding:5px 11px; display:inline-flex; align-items:center; gap:6px; border:1px solid; }
+  .sc.ap{ color:var(--ap); background:var(--ap-tint); border-color:var(--ap-line); }
+  .sc.md{ color:var(--md); background:var(--md-tint); border-color:var(--md-line); }
+  .sc.sg{ color:var(--sg-text); background:var(--sg-tint); border-color:var(--sg-line); }
+  .sc .n{ font-family:var(--f-mono); font-weight:700; }
+  .rv-grp{ border:1px solid var(--line); border-radius:var(--r); overflow:hidden; margin-bottom:12px; border-left-width:4px; }
+  .rv-grp.ap{ border-left-color:var(--ap); } .rv-grp.md{ border-left-color:var(--md); } .rv-grp.sg{ border-left-color:var(--sg); }
+  .rv-grp .gh{ display:flex; align-items:center; gap:8px; padding:9px 13px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; border-bottom:1px solid var(--line); }
+  .rv-grp.ap .gh{ background:var(--ap-tint); color:var(--ap); } .rv-grp.md .gh{ background:var(--md-tint); color:var(--md); } .rv-grp.sg .gh{ background:var(--sg-tint); color:var(--sg-text); }
+  .rv-grp .gh .gcount{ font-family:var(--f-mono); opacity:.7; }
+  .rv-grp .gh .gsub{ margin-left:auto; font-family:var(--f-mono); }
+  .rv-row{ display:flex; gap:12px; align-items:flex-start; padding:10px 13px; border-bottom:1px solid var(--line); background:var(--paper); }
+  .rv-row:last-child{ border-bottom:0; }
+  .rv-row .nm{ font-weight:600; font-size:13.5px; line-height:1.3; }
+  .rv-row .mt{ font-family:var(--f-mono); font-size:11px; color:var(--muted); margin-top:3px; }
+  .rv-row .rt{ margin-left:auto; text-align:right; flex:none; }
+  .rv-row .rt .t{ font-family:var(--f-mono); font-weight:700; font-size:14px; }
+  .rv-row .rt .sl{ font-family:var(--f-mono); font-size:10.5px; color:var(--muted); margin-top:2px; }
+  .rv-total{ background:var(--ink); color:#fff; border-radius:var(--r); padding:15px 16px; display:flex; align-items:center; gap:14px; margin:4px 0 6px; }
+  .rv-total .lbl{ font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:rgba(255,255,255,.72); font-weight:700; }
+  .rv-total .sub{ font-family:var(--f-mono); font-size:11px; color:rgba(255,255,255,.7); margin-top:4px; }
+  .rv-total .amt{ margin-left:auto; font-family:var(--f-mono); font-weight:700; font-size:25px; letter-spacing:-.01em; }
+
+  /* response choice (Approve / Request changes / Decline) */
+  .rv-resp{ margin:14px 0 4px; }
+  .rv-resp .rl{ font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:700; margin-bottom:8px; }
+  .resp-opts{ display:flex; gap:9px; flex-wrap:wrap; }
+  .resp-opt{ flex:1; min-width:120px; border:1.5px solid var(--line-2); border-radius:11px; padding:11px 12px; cursor:pointer; background:#fff; text-align:left; }
+  .resp-opt .t{ font-weight:800; font-size:13.5px; } .resp-opt .d{ font-size:11.5px; color:var(--muted); margin-top:2px; }
+  .resp-opt.sel.approved{ border-color:var(--ap); background:var(--ap-tint); }
+  .resp-opt.sel.changes_requested{ border-color:var(--sg); background:var(--sg-tint); }
+  .resp-opt.sel.rejected{ border-color:var(--md); background:var(--md-tint); }
+  .rv-remarks{ margin-top:12px; }
+  .rv-remarks label{ font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:700; display:flex; gap:6px; }
+  .rv-remarks .req{ color:var(--md); }
+  .rv-remarks textarea{ width:100%; margin-top:6px; border:1px solid var(--line-2); border-radius:10px; padding:10px; font-family:inherit; font-size:14px; resize:vertical; min-height:64px; }
+
+  .done{ display:none; text-align:center; padding:54px 24px 40px; }
+  .done.show{ display:block; animation:riseIn .5s ease both; }
+  .stage{ position:relative; width:120px; height:120px; margin:0 auto 22px; display:grid; place-items:center; }
+  .stage .ring{ position:absolute; inset:0; margin:auto; width:120px;height:120px; border-radius:50%; border:2px solid var(--ap); opacity:0; animation:ringOut 2.4s ease-out infinite; }
+  .stage .ring:nth-child(2){ animation-delay:.6s; } .stage .ring:nth-child(3){ animation-delay:1.2s; }
+  .stage .seal{ position:relative; width:80px;height:80px;border-radius:50%; background:var(--ink); display:grid; place-items:center; box-shadow:var(--shadow); animation:sealPop .55s cubic-bezier(.2,.9,.2,1.3) both; }
+  .stage.rejected .seal{ background:var(--md); } .stage.rejected .ring{ border-color:var(--md); }
+  .stage.changes_requested .seal{ background:var(--sg); } .stage.changes_requested .ring{ border-color:var(--sg); }
+  .stage .seal svg{ width:42px;height:42px; }
+  .stage .seal .chk{ stroke:#fff; stroke-width:2.6; stroke-linecap:round; stroke-linejoin:round; fill:none; stroke-dasharray:60; stroke-dashoffset:60; animation:drawCheck .5s .38s ease forwards; }
+  .done h3{ font-size:25px; font-weight:700; margin:0 0 8px; letter-spacing:-.01em; }
+  .done p{ color:var(--ink-2); max-width:42ch; margin:0 auto 22px; }
+  .ref{ display:inline-block; border:1px solid var(--line); border-radius:var(--r); padding:14px 16px 14px 22px; box-shadow:var(--shadow-sm); background:var(--paper); }
+  .ref .rl{ font-size:10.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); font-weight:700; text-align:left; }
+  .refrow{ display:flex; align-items:center; gap:14px; margin-top:4px; }
+  .refrow .rv{ font-family:var(--f-mono); font-size:18px; font-weight:700; }
+  .copy{ border:1px solid var(--line-2); background:var(--paper); border-radius:7px; padding:6px 11px; font-size:12px; font-weight:600; cursor:pointer; color:var(--ink); }
+  .copy:hover{ background:var(--field); }
+  .done-chips{ display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-top:22px; }
+  .done-chips .ch{ font-size:12px; color:var(--ink-2); background:var(--field); border:1px solid var(--line); border-radius:var(--pill); padding:6px 12px; }
+  .done-chips .ch b{ font-family:var(--f-mono); }
+
+  .state-card{ text-align:center; padding:48px 26px; }
+  .state-card .ic{ font-size:46px; line-height:1; }
+  .state-card h2{ font-size:22px; margin:14px 0 8px; }
+  .state-card p{ color:var(--ink-2); max-width:44ch; margin:0 auto; }
+
+  @media (max-width:820px){
+    .jc-head{ grid-template-columns:1fr; gap:14px; text-align:left; }
+    .title-blk{ border-top:1px solid var(--line); border-bottom:1px solid var(--line); padding:12px 0; }
+    .title-blk .mono-logo{ margin:0 0 8px; }
+    .info{ grid-template-columns:auto 1fr; }
+    .info .full,.info .klabel.full{ grid-column:auto; }
+  }
+  @media (max-width:560px){
+    .review{ left:0; right:0; top:auto; bottom:0; width:100%; max-width:none; max-height:90vh;
+      transform:translateY(100%); border-radius:var(--r-lg) var(--r-lg) 0 0; }
+    .review.open{ transform:translateY(0); }
+  }
+  @media (max-width:430px){
+    .pc-total{ margin-left:0; text-align:left; width:100%; order:3; }
+    .bar .tv{ font-size:20px; }
+  }
+  @media (prefers-reduced-motion:reduce){ *{ animation:none !important; transition:none !important; } }
+</style>
+</head>
+<body>
+
+<div id="root">
+  <div class="sheet"><div class="pad"><div class="state-card"><div class="ic">⏳</div><h2>Loading your approval…</h2></div></div></div>
+</div>
+
+<div class="bar hide" id="bar">
+  <div class="bar-in">
+    <div>
+      <div class="tl">Selected total (est.)</div>
+      <div class="tv" id="grand">₹0</div>
+      <div class="ts" id="brk">0 parts · labour ₹0</div>
+    </div>
+    <button class="btn primary" id="submitBtn" type="button">
+      <span id="submitLbl">Submit</span>
+      <svg viewBox="0 0 24 24" fill="none"><path d="M5 12h13m0 0l-5-5m5 5l-5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+  </div>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<div class="review" id="review" role="dialog" aria-modal="true" aria-labelledby="rvTitle">
+  <button class="rv-x" id="rvClose" type="button" aria-label="Close">×</button>
+  <div class="rv-top">
+    <span class="rv-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="16" rx="4" stroke="#fff" stroke-width="1.6"/><path d="M8.5 12l2.5 2.5L16 9" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+    <div class="rv-ttl"><h3 id="rvTitle">Review your approval</h3><p id="rvSub"></p></div>
+  </div>
+  <div class="rv-body"><div id="rvContent"></div></div>
+  <div class="rv-act">
+    <button class="btn" id="rvBack" type="button">Back to form</button>
+    <button class="btn primary" id="rvSubmit" type="button">Submit</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var INR=function(n){ return "₹ "+(Math.round(Number(n)||0)).toLocaleString("en-IN"); };
+  var esc=function(s){ return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c];}); };
+  var $=function(id){ return document.getElementById(id); };
+  var dash=function(v){ return (v==null||v==="")?"—":esc(v); };
+  var fmtDT=function(iso){ if(!iso) return null; try{ return new Date(iso).toLocaleString("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"}); }catch(e){ return null; } };
+
+  var path=location.pathname.split("/").filter(Boolean);
+  var IS_PREVIEW = path[path.length-1]==="preview";
+  var TOKEN = IS_PREVIEW ? null : path[path.length-1];
+  var API = TOKEN ? "/customer-approval/"+TOKEN : null;
+
+  var DATA=null, busy=false, RESPONSE="approved";
+  // local selection: { itemId: true/false } — kept in the browser; sent once on Submit
+  var SEL={};
+
+  async function api(p, body){
+    var r=await fetch(API+p,{method:body?"POST":"GET",headers:body?{"Content-Type":"application/json"}:undefined,body:body?JSON.stringify(body):undefined});
+    var j=null; try{ j=await r.json(); }catch(e){}
+    if(!r.ok){ var e=new Error((j&&(j.message||j.detail))||("HTTP "+r.status)); e.status=r.status; throw e; }
+    return j;
+  }
+
+  var ico={
+    plus:'<svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+    del:'<svg viewBox="0 0 24 24" fill="none"><path d="M5 7h14M9 7V5h6v2m-7 0v12a1 1 0 001 1h6a1 1 0 001-1V7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    up:'<svg viewBox="0 0 24 24" fill="none"><path d="M12 20V7m0 0l-5 5m5-5l5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    chk:'<svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4.2 4.2L19 7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+  };
+
+  // ── group items: Already Approved (originals), Mandatory (suggestion+mandatory), Suggested (rest)
+  function groups(d){
+    var orig=(d.original_items||[]).slice();
+    var sug=(d.suggested_items||[]);
+    var md=sug.filter(function(it){ return it.reason_type==="mandatory"; });
+    var sg=sug.filter(function(it){ return it.reason_type!=="mandatory"; });
+    return [
+      {kind:"ap",tag:"Approved",cls:"ap",title:"Already Approved Parts",
+       note:"Confirmed with you when the job was booked in. Remove any you no longer want.",items:orig,checkLabel:"Approved"},
+      {kind:"md",tag:"Required",cls:"md",title:"Mandatory Changes",
+       note:"Required for a safe, complete service. Tap Add to approve each item.",items:md,checkLabel:"Added"},
+      {kind:"sg",tag:"Suggested",cls:"sg",title:"Suggested Upgrades",
+       note:"Optional improvements our team recommends. Tap Add for the ones you want.",items:sg,checkLabel:"Added"}
+    ];
+  }
+  function rowTotal(it){ var t=(it.total_cost!=null)?it.total_cost:(it.amount!=null?it.amount:((it.service_cost||0)+(it.labour_cost||0))); return Number(t)||0; }
+  function initSel(d){
+    SEL={};
+    (d.original_items||[]).forEach(function(it){ SEL[it.id]=(it.customer_status!=="removed"); });
+    (d.suggested_items||[]).forEach(function(it){ SEL[it.id]=(it.customer_status==="added"); });
+  }
+  function cardHTML(it,g){
+    var sel=!!SEL[it.id];
+    var improve=(g.kind==="sg" && it.admin_note)
+      ? '<div class="pc-improve">'+ico.up+'<span><b>How it helps:</b> '+esc(it.admin_note)+'</span></div>' : '';
+    var metas='<span class="m"><b>Part No.</b> '+dash(it.product_code)+'</span>'+
+      '<span class="m"><b>Qty</b> '+(it.quantity||1)+'</span>'+
+      (it.unit_value!=null?'<span class="m"><b>Unit</b> '+esc(it.unit_value)+'</span>':'');
+    var toggle = IS_PREVIEW ? '' :
+      '<button class="tbtn'+(sel?' on':'')+'" data-toggle="'+it.id+'" type="button" aria-pressed="'+(sel?'true':'false')+'">'+(sel?ico.del+"Remove":ico.plus+"Add")+'</button>';
+    return '<div class="pcard '+g.cls+(sel?' sel':'')+'" data-id="'+it.id+'">'+
+      '<div class="pc-top">'+
+        '<span class="pc-tag">'+g.tag+'</span>'+
+        '<span class="pc-check">'+ico.chk+g.checkLabel+'</span>'+
+        '<div class="pc-name">'+esc(it.item_name)+'</div>'+
+        '<div class="pc-total"><div class="pl">Total</div><div class="pv">'+INR(rowTotal(it))+'</div></div>'+
+      '</div>'+
+      '<div class="pc-meta">'+metas+'</div>'+
+      (it.description?'<p class="pc-desc">'+esc(it.description)+'</p>':'')+ improve+
+      '<div class="pc-foot">'+
+        '<div class="pc-costs">'+
+          '<div class="c"><div class="cl">Service</div><div class="cv">'+INR(it.service_cost||0)+'</div></div>'+
+          '<div class="c"><div class="cl">Labour</div><div class="cv">'+INR(it.labour_cost||0)+'</div></div>'+
+        '</div>'+
+        '<span class="sp"></span>'+ toggle +
+      '</div>'+
+    '</div>';
+  }
+
+  function infoRow(k,v,code){ return '<div class="c k">'+esc(k)+'</div><div class="c v'+(code?' code':'')+'">'+dash(v)+'</div>'; }
+
+  function headHTML(d){
+    var f=d.form||{}, dl=f.dealer||{}, vh=f.vehicle||{}, cu=f.customer||{}, sv=f.service||{}, sr=d.showroom||{};
+    var name=dl.name||sr.name||"Service Centre";
+    var mono=String(name).trim().charAt(0).toUpperCase()||"B";
+    var addr=[dl.address,dl.phone?("Mobile : "+dl.phone):null,dl.email?("Email : "+dl.email):null].filter(Boolean).map(esc).join("<br>");
+    var jcno=sv.job_card_number||d.job_card_number;
+    var expHTML = IS_PREVIEW
+      ? '<span class="exp">PREVIEW — not yet sent</span>'
+      : (d.expires_at?'<span class="exp">Link valid till '+esc(fmtDT(d.expires_at)||"")+'</span>':'');
+    return '<div class="ribbon'+(IS_PREVIEW?' preview':'')+'">'+
+        '<span class="dot" aria-hidden="true"></span><b>'+(IS_PREVIEW?'Admin preview':'Secure approval link')+'</b>'+
+        '<span>· '+esc(name)+'</span>'+ expHTML +
+      '</div>'+
+      '<div class="pad">'+
+      '<div class="jc-head">'+
+        '<div class="dealer"><div class="nm">'+esc(name)+'</div>'+(addr?'<div class="ad">'+addr+'</div>':'')+'</div>'+
+        '<div class="title-blk"><div class="mono-logo">'+esc(mono)+'</div><div class="jc">JOB CARD</div><div class="sb">Customer Part Approval</div></div>'+
+        '<div class="summary">'+
+          '<span class="sl">Model</span><span class="sv">'+dash(vh.model||d.vehicle_model)+'</span>'+
+          '<span class="sl">Repair Type</span><span class="sv">'+dash(sv.repair_type||d.service_type)+'</span>'+
+          '<span class="sl">Reg No.</span><span class="sv mono">'+dash(vh.registration||d.vehicle_number)+'</span>'+
+          '<span class="sl">Date &amp; Time In</span><span class="sv">'+dash(fmtDT(sv.datetime_in))+'</span>'+
+        '</div>'+
+      '</div>'+
+      '<div class="numline">Number : <b>'+dash(jcno)+'</b>&nbsp;&nbsp;&nbsp; Date : <b>'+dash(fmtDT(sv.date)||"—")+'</b></div>'+
+      '<div class="rule"></div>'+
+
+      '<div class="sec"><div class="sec-h"><span class="tick"></span><h2>1. Vehicle Information</h2></div></div>'+
+      '<div class="info">'+
+        infoRow("Model",vh.model||d.vehicle_model)+ infoRow("Registration",vh.registration||d.vehicle_number,true)+
+        infoRow("Chassis No",vh.chassis_number,true)+ infoRow("Engine No",vh.engine_number,true)+
+        infoRow("Date of Sale",vh.date_of_sale)+ infoRow("KMs Covered",vh.km_reading,true)+
+      '</div>'+
+
+      '<div class="sec"><div class="sec-h"><span class="tick"></span><h2>2. Customer Information</h2></div></div>'+
+      '<div class="info">'+
+        infoRow("Name",cu.name||d.customer_name)+ infoRow("Contact",cu.contact,true)+
+        infoRow("Email",cu.email,true)+ infoRow("Customer ID",cu.customer_ref,true)+
+        '<div class="c k klabel full">Address</div><div class="c v full">'+dash(cu.address)+'</div>'+
+      '</div>'+
+
+      '<div class="sec"><div class="sec-h"><span class="tick"></span><h2>3. Service Information</h2></div></div>'+
+      '<div class="info">'+
+        infoRow("Job Card No",jcno,true)+ infoRow("Repair Type",sv.repair_type||d.service_type)+
+        infoRow("Date & Time In",fmtDT(sv.datetime_in))+ infoRow("Est. Delivery",fmtDT(sv.est_delivery))+
+        infoRow("Service Advisor",sv.service_advisor)+ infoRow("SA Contact",sv.sa_contact,true)+
+      '</div>'+
+
+      '<div class="sec"><div class="sec-h"><span class="tick"></span><h2>4. Customer Voice</h2></div></div>'+
+      '<div class="voice">'+(f.voice?esc(f.voice):"No customer voice recorded.")+'</div>';
+  }
+
+  function sectionsHTML(d){
+    return groups(d).map(function(g){
+      var tick=g.kind, cards=g.items.map(function(it){ return cardHTML(it,g); }).join("")
+        || '<div class="sec-note" style="margin:0">No items in this section.</div>';
+      return '<div class="sec"><div class="sec-h"><span class="tick '+tick+'"></span><h2>'+
+          ({ap:"5. Already Approved Parts",md:"6. Mandatory Changes",sg:"7. Suggested Upgrades"}[g.kind])+
+          '</h2><span class="ct">'+g.items.length+(g.items.length===1?" item":" items")+'</span></div></div>'+
+        '<p class="sec-note">'+g.note+'</p><div class="cards">'+cards+'</div>';
+    }).join("");
+  }
+
+  function render(d){
+    DATA=d; initSel(d);
+    var footer='<p class="footnote">'+(IS_PREVIEW
+      ? 'Admin preview — this is exactly what the customer will see. The customer cannot submit from here.'
+      : 'One-time secure approval link for job card '+dash((d.form&&d.form.service&&d.form.service.job_card_number)||d.job_card_number)+'. Please do not share.')+'</p>';
+    $("root").innerHTML='<div class="sheet" id="sheetDoc">'+ headHTML(d)+ sectionsHTML(d)+ footer +'</div></div>';
+    if(IS_PREVIEW){ document.body.classList.add("ro","no-bar"); $("bar").classList.add("hide"); }
+    else { $("bar").classList.remove("hide"); totals(); }
+  }
+
+  function totals(){
+    var p=0,l=0,n=0;
+    (DATA.original_items||[]).concat(DATA.suggested_items||[]).forEach(function(it){
+      if(SEL[it.id]){ p+=(it.service_cost||0)*1; l+=(it.labour_cost||0)*1; n++; }
+    });
+    $("grand").textContent=INR(p+l);
+    $("brk").textContent=n+(n===1?" part":" parts")+" · labour "+INR(l);
+    var g=$("grand"); g.classList.remove("bump"); void g.offsetWidth; g.classList.add("bump");
+  }
+
+  // toggle Add <-> Remove locally
+  document.addEventListener("click",function(e){
+    var t=e.target.closest("[data-toggle]"); if(!t||IS_PREVIEW) return;
+    var id=t.getAttribute("data-toggle"); SEL[id]=!SEL[id];
+    var card=t.closest(".pcard"), sel=SEL[id];
+    card.classList.toggle("sel",sel); t.classList.toggle("on",sel);
+    t.setAttribute("aria-pressed",sel?"true":"false");
+    t.innerHTML = sel?ico.del+"Remove":ico.plus+"Add";
+    card.classList.remove("tap"); void card.offsetWidth; card.classList.add("tap");
+    totals();
+  });
+
+  function selectedRows(){
+    var rows=[];
+    groups(DATA).forEach(function(g){ g.items.forEach(function(it){ if(SEL[it.id]) rows.push({it:it,kind:g.kind}); }); });
+    return rows;
+  }
+  function decisionsMap(){
+    var m={};
+    (DATA.original_items||[]).forEach(function(it){ m[it.id]=SEL[it.id]?"approved":"removed"; });
+    (DATA.suggested_items||[]).forEach(function(it){ m[it.id]=SEL[it.id]?"added":"rejected"; });
+    return m;
+  }
+
+  function buildReview(){
+    var names={ap:["Approved","ap"],md:["Mandatory","md"],sg:["Suggested","sg"]};
+    var ts=0,tl=0,any=false,counts={ap:0,md:0,sg:0},gHTML="";
+    groups(DATA).forEach(function(g){
+      var arr=g.items.filter(function(it){ return SEL[it.id]; });
+      counts[g.kind]=arr.length; if(!arr.length) return; any=true;
+      var gsum=0, rows=arr.map(function(it){
+        var st=(it.service_cost||0), lb=(it.labour_cost||0), t=st+lb; ts+=st; tl+=lb; gsum+=t;
+        return '<div class="rv-row"><div><div class="nm">'+esc(it.item_name)+'</div>'+
+          '<div class="mt">'+dash(it.product_code)+' · Qty '+(it.quantity||1)+'</div></div>'+
+          '<div class="rt"><div class="t">'+INR(t)+'</div><div class="sl">Svc '+INR(st)+' · Lab '+INR(lb)+'</div></div></div>';
+      }).join("");
+      gHTML+='<div class="rv-grp '+g.kind+'"><div class="gh"><span class="dotc dot-'+g.kind+'"></span><span>'+
+        names[g.kind][0]+'</span><span class="gcount">'+arr.length+'</span><span class="gsub">'+INR(gsum)+'</span></div>'+rows+'</div>';
+    });
+    var chips='<div class="rv-sumchips">'+
+      (counts.ap?'<span class="sc ap"><span class="n">'+counts.ap+'</span> Approved</span>':'')+
+      (counts.md?'<span class="sc md"><span class="n">'+counts.md+'</span> Mandatory</span>':'')+
+      (counts.sg?'<span class="sc sg"><span class="n">'+counts.sg+'</span> Suggested</span>':'')+'</div>';
+    var body = any
+      ? chips+gHTML+'<div class="rv-total"><div><div class="lbl">Final price (est.)</div><div class="sub">parts '+INR(ts)+'  ·  labour '+INR(tl)+'</div></div><div class="amt">'+INR(ts+tl)+'</div></div>'
+      : '<div class="rv-empty">No parts selected. You can still request changes or decline below.</div>';
+    var resp='<div class="rv-resp"><div class="rl">Your decision</div><div class="resp-opts">'+
+        respOpt("approved","Approve selected","Proceed with the selected parts")+
+        respOpt("changes_requested","Request changes","Ask for a revised estimate")+
+        respOpt("rejected","Decline","Do not proceed")+
+      '</div></div>'+
+      '<div class="rv-remarks"><label>Remarks <span class="req" id="remReq" style="display:none">· required</span></label>'+
+        '<textarea id="remarks" placeholder="Add a note for the service centre…"></textarea></div>';
+    $("rvContent").innerHTML=body+resp;
+    syncResp();
+  }
+  function respOpt(k,t,d){ return '<div class="resp-opt '+k+(RESPONSE===k?' sel':'')+'" data-resp="'+k+'"><div class="t">'+t+'</div><div class="d">'+d+'</div></div>'; }
+  function syncResp(){
+    ["approved","changes_requested","rejected"].forEach(function(k){
+      var el=document.querySelector('.resp-opt[data-resp="'+k+'"]'); if(el) el.classList.toggle("sel",RESPONSE===k);
+    });
+    var need=RESPONSE!=="approved";
+    var rq=$("remReq"); if(rq) rq.style.display=need?"inline":"none";
+    var btn=$("rvSubmit"); if(btn) btn.textContent={approved:"Submit approval",changes_requested:"Submit change request",rejected:"Submit decline"}[RESPONSE];
+  }
+  document.addEventListener("click",function(e){
+    var r=e.target.closest("[data-resp]"); if(!r) return; RESPONSE=r.getAttribute("data-resp"); syncResp();
+  });
+
+  var lastFocus=null;
+  function openReview(){
+    if(IS_PREVIEW) return;
+    RESPONSE="approved"; lastFocus=document.activeElement; buildReview();
+    $("scrim").classList.add("open"); $("review").classList.add("open");
+    var sub=$("rvSub"); var f=(DATA.form&&DATA.form.service)||{};
+    if(sub) sub.textContent="Job card "+((f.job_card_number)||DATA.job_card_number||"")+" · "+(DATA.customer_name||"");
+  }
+  function closeReview(){ $("scrim").classList.remove("open"); $("review").classList.remove("open"); if(lastFocus&&lastFocus.focus) lastFocus.focus(); }
+
+  async function confirmSubmit(){
+    if(busy||IS_PREVIEW) return;
+    var remarks=($("remarks")||{}).value||"";
+    if(RESPONSE!=="approved" && !remarks.trim()){
+      var ta=$("remarks"); if(ta){ ta.focus(); ta.style.borderColor="var(--md)"; } return;
+    }
+    busy=true; var btn=$("rvSubmit"); btn.disabled=true;
+    try{
+      var j=await api("/submit",{response_status:RESPONSE,customer_remarks:remarks.trim()||null,decisions:decisionsMap()});
+      closeReview(); showDone(j.data);
+    }catch(e){ alert(e.message||"Could not submit"); if(e.status===409) load(); busy=false; btn.disabled=false; }
+  }
+
+  function showDone(d){
+    var rs=(d&&d.response_status)||RESPONSE;
+    var head={approved:["✅","Estimate approved","Thank you. The service team has been notified and will begin work on the approved items."],
+      changes_requested:["✏️","Changes requested","Thanks. Your service centre will review your remarks and send a revised estimate."],
+      rejected:["🛑","Estimate declined","You declined this estimate. Your service centre will be in touch."]}[rs]
+      || ["✅","Response recorded","Thank you — your response has been received."];
+    var t=(d&&d.totals)||{}; var when=fmtDT(d&&d.submitted_at)||fmtDT(new Date().toISOString());
+    var ref=(d&&d.approval_number)||"";
+    $("root").innerHTML='<div class="sheet"><div class="done show"><div class="stage '+rs+'" aria-hidden="true">'+
+      '<span class="ring"></span><span class="ring"></span><span class="ring"></span>'+
+      '<div class="seal"><svg viewBox="0 0 24 24"><path class="chk" d="M5 12.5l4.5 4.5L19 7.5"/></svg></div></div>'+
+      '<h3>'+head[1]+'</h3><p>'+head[2]+'</p>'+
+      (ref?'<div class="ref"><div class="rl">Approval reference</div><div class="refrow"><span class="rv" id="refNo">'+esc(ref)+'</span>'+
+        '<button class="copy" id="copyRef" type="button">Copy</button></div></div>':'')+
+      '<div class="done-chips">'+
+        '<span class="ch">Response <b>'+esc(rs.replace("_"," "))+'</b></span>'+
+        '<span class="ch">Total <b>'+INR(t.final_estimated_cost!=null?t.final_estimated_cost:t.approved_cost)+'</b></span>'+
+        (when?'<span class="ch">'+esc(when)+'</span>':'')+
+        (d&&d.customer_remarks?'<span class="ch">Remarks: '+esc(d.customer_remarks)+'</span>':'')+
+      '</div></div></div>';
+    $("bar").classList.add("hide"); document.body.classList.add("no-bar"); window.scrollTo({top:0,behavior:"smooth"});
+    var cp=$("copyRef"); if(cp) cp.addEventListener("click",function(){
+      var txt=$("refNo").textContent; var done=function(){ cp.textContent="Copied"; setTimeout(function(){cp.textContent="Copy";},1500); };
+      if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(txt).then(done,done); } else done();
+    });
+  }
+
+  // already-submitted (read-only) — backend returns read_only + response_status
+  function showSubmittedReadonly(d){
+    render(d);                       // render the sheet (read-only: no toggles, no bar)
+    document.body.classList.add("ro","no-bar"); $("bar").classList.add("hide");
+    // prepend a thank-you banner
+    var rs=d.response_status||d.status;
+    showDone(d);
+  }
+
+  function stateCard(icon,title,msg){
+    $("root").innerHTML='<div class="sheet"><div class="pad"><div class="state-card"><div class="ic">'+icon+'</div><h2>'+esc(title)+'</h2><p>'+esc(msg)+'</p></div></div></div>';
+    $("bar").classList.add("hide"); document.body.classList.add("no-bar");
+  }
+
+  async function load(){
+    try{
+      var j=await api("/data"); var d=j.data;
+      if(d.read_only || ["submitted","approved","rejected","changes_requested"].indexOf(d.status)>=0){ showSubmittedReadonly(d); return; }
+      render(d);
+    }catch(e){
+      var m=(e.message||"").toLowerCase();
+      if(e.status===404) return stateCard("🔌","Link not found","This approval link is invalid or has been removed.");
+      if(e.status===409){
+        if(m.indexOf("replaced")>=0) return stateCard("🔄","Estimate updated","This estimate was replaced by a newer one. Please open the latest link your service centre sent you.");
+        if(m.indexOf("revoked")>=0) return stateCard("🚫","Link revoked",e.message);
+        if(m.indexOf("expired")>=0) return stateCard("⏰","Link expired",e.message);
+        if(m.indexOf("submitted")>=0) return stateCard("✅","Already submitted","You have already responded to this estimate. Thank you.");
+        return stateCard("🚫","This link is closed",e.message);
+      }
+      stateCard("🔌","Something went wrong",e.message||"Please try again later.");
+    }
+  }
+
+  // wire static controls
+  $("submitBtn").addEventListener("click",openReview);
+  $("rvBack").addEventListener("click",closeReview);
+  $("rvClose").addEventListener("click",closeReview);
+  $("scrim").addEventListener("click",closeReview);
+  $("rvSubmit").addEventListener("click",confirmSubmit);
+  document.addEventListener("keydown",function(e){ if(e.key==="Escape"&&$("review").classList.contains("open")) closeReview(); });
+
+  // ── PREVIEW MODE: no token, NO data fetch, NO submit. The snapshot is handed in by the admin
+  //    app via postMessage. Guard (two checks): the message must come from our direct embedder
+  //    (window.parent) AND from an allow-listed origin — the same origin (production, where the
+  //    backend serves the app), the local dev frontend port, or an origin the backend injects via
+  //    window.__BW_ALLOWED_ORIGINS. The page never calls an API and cannot submit.
+  if(IS_PREVIEW){
+    document.body.classList.add("ro","no-bar");
+    var ALLOWED=[location.origin];
+    try{
+      if(location.hostname==="localhost"||location.hostname==="127.0.0.1"){
+        ALLOWED.push("http://localhost:7890","http://127.0.0.1:7890");
+      }
+    }catch(e){}
+    if(window.__BW_ALLOWED_ORIGINS && window.__BW_ALLOWED_ORIGINS.length){ ALLOWED=ALLOWED.concat(window.__BW_ALLOWED_ORIGINS); }
+    if(window.parent===window){
+      stateCard("👀","Preview","Open this from the admin Customer Approvals screen to preview the customer form.");
+    }
+    window.addEventListener("message",function(ev){
+      if(ev.source!==window.parent) return;                     // only our embedder
+      if(ALLOWED.indexOf(ev.origin)===-1) return;               // and only an allow-listed origin
+      var msg=ev.data||{};
+      if(msg.type==="bw-approval-preview" && msg.data){ render(msg.data); }
+    });
+    // No outbound ping (no "*") — the admin parent posts the snapshot on iframe load.
+  } else {
+    load();
+  }
+})();
+</script>
+</body>
+</html>
